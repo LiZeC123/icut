@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频切割工具</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #1b1b1d;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+        }
+
+        /* ---------- 侧栏 ---------- */
+        #sidebar {
+            width: 300px;
+            flex: 0 0 300px;
+            background: #232327;
+            border-right: 1px solid #333338;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #sidebar h2 {
+            margin: 0;
+            padding: 18px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: #8a8a92;
+            border-bottom: 1px solid #333338;
+        }
+
+        #fileList {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        #fileList::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #fileList::-webkit-scrollbar-thumb {
+            background: #3a3a40;
+            border-radius: 4px;
+        }
+
+        .file-item {
+            padding: 12px 20px;
+            min-height: 56px;
+            cursor: pointer;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            border-bottom: 1px solid #2c2c31;
+            font-size: 14px;
+            transition: background 0.1s;
+        }
+
+        .file-item:hover {
+            background: #2c2c33;
+        }
+
+        .file-item.active {
+            background: #0e4a78;
+        }
+
+        .file-item .file-text {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            padding-top: 1px;
+        }
+
+        .file-item .dir {
+            font-size: 11px;
+            color: #7a7a82;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+        }
+
+        .file-item .dir:empty {
+            display: none;
+        }
+
+        .file-item .name {
+            color: #ddd;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-all;
+            line-height: 1.35;
+        }
+
+        .file-item .size {
+            flex: 0 0 auto;
+            color: #7a7a82;
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+            padding-top: 1px;
+        }
+
+        .file-item .actions {
+            display: none;
+            gap: 6px;
+            flex: 0 0 auto;
+        }
+
+        .file-item:hover .actions {
+            display: flex;
+        }
+
+        .file-item .actions button {
+            background: none;
+            border: none;
+            color: #aaa;
+            cursor: pointer;
+            font-size: 15px;
+            padding: 4px 6px;
+            border-radius: 4px;
+            line-height: 1;
+            transition: background 0.1s, color 0.1s;
+        }
+
+        .file-item .actions button:hover {
+            background: #3a3a42;
+            color: #fff;
+        }
+
+        /* ---------- 主区 ---------- */
+        #main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        #header {
+            flex: 0 0 auto;
+            padding: 16px 24px 10px;
+        }
+
+        #title {
+            font-size: 17px;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #eee;
+        }
+
+        #timeInfo {
+            font-size: 13px;
+            color: #8a8a92;
+            margin-top: 6px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ---------- Tabs ---------- */
+        #tabs {
+            flex: 0 0 auto;
+            display: flex;
+            gap: 4px;
+            padding: 0 24px;
+            border-bottom: 1px solid #2c2c31;
+        }
+
+        #tabs button.tab {
+            background: transparent;
+            color: #8a8a92;
+            border: none;
+            border-bottom: 2px solid transparent;
+            padding: 10px 18px;
+            margin-bottom: -1px;
+            border-radius: 6px 6px 0 0;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.1s, color 0.1s;
+        }
+
+        #tabs button.tab:hover {
+            background: #2c2c33;
+            color: #ddd;
+        }
+
+        #tabs button.tab.active {
+            background: #232327;
+            color: #fff;
+            border-bottom-color: #0e639c;
+        }
+
+        /* ---------- Tab 内容区 ---------- */
+        #tabContent {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+        }
+
+        .tab-pane {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+        }
+
+        .tab-pane.active {
+            display: flex;
+        }
+
+        /* 故事板 Tab */
+        #tab-storyboard {
+            padding: 16px 24px;
+        }
+
+        #storyboardWrap {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #121214;
+            border: 1px solid #333338;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #storyboardImg {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        #storyboardImg:not([src]) {
+            visibility: hidden;
+        }
+
+        #storyboardPlaceholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #8a8a92;
+            font-size: 13px;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        #storyboardPlaceholder.hidden {
+            display: none;
+        }
+
+        /* 预览 Tab —— 双元素：单帧 / sprite */
+        #previewContainer {
+            flex: 1;
+            min-height: 0;
+            margin: 16px 24px 8px;
+            background: #0a0a0c;
+            border: 1px solid #2c2c31;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        #previewFrame {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        #previewFrame:not([src]) {
+            visibility: hidden;
+        }
+
+        #previewClip {
+            display: none;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #previewSprite {
+            position: absolute;
+            display: block;
+            max-width: none;
+            max-height: none;
+        }
+
+        #previewSprite:not([src]) {
+            visibility: hidden;
+        }
+
+        #previewContainer.sprite-mode #previewFrame {
+            display: none;
+        }
+
+        #previewContainer.sprite-mode #previewClip {
+            display: block;
+        }
+
+        #previewFooter {
+            flex: 0 0 auto;
+            padding: 8px 24px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #progressContainer {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #progress {
+            flex: 1;
+            accent-color: #0e639c;
+            height: 4px;
+            cursor: pointer;
+        }
+
+        #progress:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        #controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        #clipInfo {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            font-size: 13px;
+            color: #a0a0a8;
+        }
+
+        #clipTimes {
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ---------- 按钮 / 输入 ---------- */
+        button {
+            background: #0e639c;
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.1s;
+        }
+
+        button:hover:not(:disabled) {
+            background: #1177bb;
+        }
+
+        button:disabled {
+            background: #3a3a40;
+            color: #777;
+            cursor: not-allowed;
+        }
+
+        input[type="text"] {
+            background: #2a2a2f;
+            border: 1px solid #444;
+            color: #ddd;
+            padding: 7px 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: #0e639c;
+        }
+
+        /* ---------- 状态栏 / 遮罩 ---------- */
+        #status {
+            flex: 0 0 auto;
+            padding: 10px 24px;
+            font-size: 12px;
+            color: #7a7a82;
+            border-top: 1px solid #2c2c31;
+        }
+
+        #loading {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            z-index: 999;
+            color: #fff;
+        }
+
+        #loading.show {
+            display: flex;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="sidebar">
+        <h2>文件列表</h2>
+        <div id="fileList"></div>
+    </div>
+    <div id="main">
+        <div id="header">
+            <div id="title">未选择文件</div>
+            <div id="timeInfo">--:--:-- / --:--:--</div>
+        </div>
+
+        <div id="tabs">
+            <button class="tab active" data-tab="storyboard">故事板</button>
+            <button class="tab" data-tab="preview">预览</button>
+        </div>
+
+        <div id="tabContent">
+            <!-- 故事板 -->
+            <div id="tab-storyboard" class="tab-pane active">
+                <div id="storyboardWrap">
+                    <img id="storyboardImg" alt="">
+                    <div id="storyboardPlaceholder" class="hidden"></div>
+                </div>
+            </div>
+
+            <!-- 预览（双元素） -->
+            <div id="tab-preview" class="tab-pane">
+                <div id="previewContainer">
+                    <img id="previewFrame" alt="">
+                    <div id="previewClip">
+                        <img id="previewSprite" alt="">
+                    </div>
+                </div>
+                <div id="previewFooter">
+                    <div id="progressContainer">
+                        <input type="range" id="progress" min="0" max="100" value="0" step="0.1" disabled>
+                    </div>
+                    <div id="controls">
+                        <button id="playBtn" disabled>▶ 从此处播放</button>
+                        <button id="stopBtn" disabled>■ 停止</button>
+                        <button id="back5" disabled>-5s</button>
+                        <button id="back1" disabled>-1s</button>
+                        <button id="fwd1" disabled>+1s</button>
+                        <button id="fwd5" disabled>+5s</button>
+                        <input type="text" id="timeInput" placeholder="83 或 HH:MM:SS" disabled>
+                        <button id="jumpBtn" disabled>跳转</button>
+                    </div>
+                    <div id="clipInfo">
+                        <button id="setStart" disabled>设为起始点</button>
+                        <button id="setEnd" disabled>设为结束点</button>
+                        <span id="clipTimes">起始点：— | 结束点：— | 时长：—</span>
+                        <button id="cutBtn" disabled>切割片段</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="status">就绪</div>
+    </div>
+    <div id="loading">处理中...</div>
+
+    <script>
+        /* ===== 常量 ===== */
+        const SPRITE_SIZE = 10;
+        const SPRITE_COLS = 5;
+        const SPRITE_ROWS = 2;
+        const SPRITE_CACHE_MAX = 10;
+        const PREFETCH_AHEAD = 2;
+        const SEEK_DEBOUNCE_MS = 200;
+
+        const state = {
+            videos: [],
+            current: null,
+            duration: 0,
+            currentT: 0,
+            playing: false,
+            playSeq: 0,
+            clipStart: null,
+            clipEnd: null,
+            busy: false,
+
+            // 故事板
+            pollTimer: null,
+            storyboardSeq: 0,
+
+            // 单帧截图（浏览/seek）
+            screenshotSeq: 0,
+            screenshotTimer: null,
+            screenshotAbort: null,
+
+            // sprite（播放）
+            spriteCache: new Map(),
+            spriteCacheOrder: [],
+            spriteInflight: new Map(),
+            spriteAbort: null,
+        };
+
+        const $ = id => document.getElementById(id);
+
+        /* ---------- 格式化 ---------- */
+        function formatTime(sec) {
+            if (sec == null || isNaN(sec)) return '--:--:--';
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            const s = Math.floor(sec % 60);
+            return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+        }
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+            return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+        }
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+        function strictEncodePath(p) {
+            return p.split('/').map(seg => encodeURIComponent(seg).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())).join('/');
+        }
+        function waitShort(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+        function switchTab(name) {
+            document.querySelectorAll('#tabs .tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.tab === name);
+            });
+            document.querySelectorAll('.tab-pane').forEach(p => {
+                p.classList.toggle('active', p.id === 'tab-' + name);
+            });
+        }
+
+        /* ---------- 文件列表 ---------- */
+        async function loadVideos() {
+            const res = await fetch('/api/videos');
+            state.videos = await res.json();
+            renderFileList();
+        }
+
+        function renderFileList() {
+            const list = $('fileList');
+            list.innerHTML = '';
+            state.videos.forEach(v => {
+                const slashIdx = v.relPath.lastIndexOf('/');
+                const dirPart = slashIdx >= 0 ? v.relPath.substring(0, slashIdx + 1) : '';
+                const namePart = v.baseName + v.ext;
+
+                const div = document.createElement('div');
+                div.className = 'file-item' + (state.current && state.current.relPath === v.relPath ? ' active' : '');
+                div.dataset.path = v.relPath;
+                div.innerHTML =
+                    '<div class="file-text">' +
+                    '<div class="dir">' + escapeHtml(dirPart) + '</div>' +
+                    '<div class="name">' + escapeHtml(namePart) + '</div>' +
+                    '</div>' +
+                    '<span class="size">' + formatSize(v.size) + '</span>' +
+                    '<span class="actions">' +
+                    '<button class="copyBtn" title="复制下载链接">⧉</button>' +
+                    '<button class="delBtn" title="删除文件">✕</button>' +
+                    '</span>';
+                div.addEventListener('click', (e) => {
+                    if (e.target.closest('.actions')) return;
+                    selectFile(v);
+                });
+                div.querySelector('.copyBtn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    copyLink(v.relPath, e.target);
+                });
+                div.querySelector('.delBtn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteFile(v.relPath);
+                });
+                list.appendChild(div);
+            });
+        }
+
+        /* ---------- 清空工具 ---------- */
+        function resetPreviewAll() {
+            $('previewFrame').removeAttribute('src');
+            const spriteEl = $('previewSprite');
+            spriteEl.removeAttribute('src');
+            spriteEl.style.width = '';
+            spriteEl.style.height = '';
+            spriteEl.style.left = '';
+            spriteEl.style.top = '';
+            $('previewClip').style.width = '';
+            $('previewClip').style.height = '';
+            $('previewContainer').classList.remove('sprite-mode');
+        }
+
+        function resetStoryboard() {
+            $('storyboardImg').removeAttribute('src');
+            showStoryboardPlaceholder('故事板加载中...');
+        }
+
+        function showStoryboardPlaceholder(text) {
+            const ph = $('storyboardPlaceholder');
+            ph.textContent = text;
+            ph.classList.remove('hidden');
+        }
+
+        function hideStoryboardPlaceholder() {
+            $('storyboardPlaceholder').classList.add('hidden');
+        }
+
+        function clearSprites() {
+            if (state.spriteAbort) state.spriteAbort.abort();
+            state.spriteAbort = new AbortController();
+            state.spriteCache.forEach(s => URL.revokeObjectURL(s.url));
+            state.spriteCache.clear();
+            state.spriteCacheOrder = [];
+            state.spriteInflight.clear();
+        }
+
+        /* ---------- 选中文件 ---------- */
+        async function selectFile(v) {
+            if (state.busy || state.playing) return;
+
+            // 清理所有 pending 的异步资源
+            if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
+            if (state.screenshotTimer) { clearTimeout(state.screenshotTimer); state.screenshotTimer = null; }
+            if (state.screenshotAbort) { state.screenshotAbort.abort(); state.screenshotAbort = null; }
+            clearSprites();
+
+            // 切换视频时全部丢弃，包括截图侧旧帧
+            resetPreviewAll();
+            resetStoryboard();
+
+            state.current = v;
+            state.duration = 0;
+            state.currentT = 0;
+            state.clipStart = null;
+            state.clipEnd = null;
+            state.playing = false;
+            state.playSeq++;
+            state.screenshotSeq++;
+
+            const sbSeq = ++state.storyboardSeq;
+
+            $('title').textContent = v.relPath;
+            $('timeInfo').textContent = '--:--:-- / --:--:--';
+            $('progress').value = 0;
+            $('clipTimes').textContent = '起始点：— | 结束点：— | 时长：—';
+            $('status').textContent = '加载中...';
+            renderFileList();
+            switchTab('storyboard');
+
+            try {
+                const res = await fetch('/api/duration?path=' + encodeURIComponent(v.relPath));
+                if (sbSeq !== state.storyboardSeq) return;
+                const data = await res.json();
+                if (sbSeq !== state.storyboardSeq) return;
+                state.duration = data.duration;
+                $('timeInfo').textContent = formatTime(0) + ' / ' + formatTime(state.duration);
+                $('progress').max = state.duration;
+                $('progress').disabled = false;
+            } catch (e) {
+                if (sbSeq !== state.storyboardSeq) return;
+                $('status').textContent = '获取时长失败';
+                return;
+            }
+
+            enableControls(true);
+            loadStoryboard(v.relPath, sbSeq);
+            seekTo(0, { keepOldFrame: false, debounce: 0 });
+        }
+
+        function enableControls(on) {
+            ['playBtn', 'stopBtn', 'back5', 'back1', 'fwd1', 'fwd5', 'timeInput', 'jumpBtn', 'setStart', 'setEnd', 'cutBtn'].forEach(id => {
+                $(id).disabled = !on;
+            });
+            if (on && state.playing) {
+                $('playBtn').disabled = true;
+                $('stopBtn').disabled = false;
+            }
+        }
+
+        /* ---------- 故事板 ---------- */
+        async function loadStoryboard(relPath, sbSeq) {
+            try {
+                const res = await fetch('/api/storyboard?path=' + encodeURIComponent(relPath));
+                if (sbSeq !== state.storyboardSeq) return;
+
+                if (res.status === 202) {
+                    showStoryboardPlaceholder('故事板生成中，请稍候...');
+                    $('status').textContent = '故事板生成中...';
+                    state.pollTimer = setTimeout(() => {
+                        if (sbSeq === state.storyboardSeq && state.current && state.current.relPath === relPath) {
+                            loadStoryboard(relPath, sbSeq);
+                        }
+                    }, 3000);
+                    return;
+                }
+                if (!res.ok) {
+                    showStoryboardPlaceholder('故事板生成失败');
+                    $('status').textContent = '故事板加载失败';
+                    return;
+                }
+                const blob = await res.blob();
+                if (sbSeq !== state.storyboardSeq) return;
+                if (!state.current || state.current.relPath !== relPath) return;
+
+                const url = URL.createObjectURL(blob);
+                const img = $('storyboardImg');
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    if (sbSeq === state.storyboardSeq) hideStoryboardPlaceholder();
+                };
+                img.src = url;
+            } catch (e) {
+                if (sbSeq !== state.storyboardSeq) return;
+                showStoryboardPlaceholder('故事板加载失败');
+            }
+        }
+
+        /* ---------- 单帧截图（浏览/seek） ---------- */
+        async function seekTo(t, opts = {}) {
+            const { keepOldFrame = true, debounce = SEEK_DEBOUNCE_MS } = opts;
+            if (!state.current) return;
+
+            state.currentT = Math.max(0, Math.min(t, state.duration));
+            $('timeInfo').textContent = formatTime(state.currentT) + ' / ' + formatTime(state.duration);
+            $('progress').value = state.currentT;
+
+            // 若当前处于 sprite-mode 且要求保留旧帧，则保留 sprite 画面直到新帧解码完成再切换模式
+            const inSpriteMode = $('previewContainer').classList.contains('sprite-mode');
+            const keepSpriteUntilLoaded = keepOldFrame && inSpriteMode;
+
+            if (!keepSpriteUntilLoaded) {
+                $('previewContainer').classList.remove('sprite-mode');
+            }
+            if (!keepOldFrame) {
+                $('previewFrame').removeAttribute('src');
+            }
+
+            // 取消上一次请求
+            if (state.screenshotAbort) state.screenshotAbort.abort();
+            if (state.screenshotTimer) { clearTimeout(state.screenshotTimer); state.screenshotTimer = null; }
+            const ctrl = new AbortController();
+            state.screenshotAbort = ctrl;
+            const seq = ++state.screenshotSeq;
+            const relPath = state.current.relPath;
+            const targetT = state.currentT;
+
+            const run = () => doFetchScreenshot(seq, relPath, targetT, ctrl, keepSpriteUntilLoaded);
+
+            $('status').textContent = '加载中...';
+            if (debounce > 0) {
+                state.screenshotTimer = setTimeout(run, debounce);
+            } else {
+                run();
+            }
+        }
+
+        async function doFetchScreenshot(seq, relPath, t, ctrl, deferModeSwitch) {
+            try {
+                const res = await fetch('/api/screenshot?path=' + encodeURIComponent(relPath) + '&t=' + t, { signal: ctrl.signal });
+                if (seq !== state.screenshotSeq) return;
+                if (!state.current || state.current.relPath !== relPath) return;
+                if (!res.ok) throw new Error('截图失败');
+                const blob = await res.blob();
+                if (seq !== state.screenshotSeq) return;
+                if (!state.current || state.current.relPath !== relPath) return;
+                const url = URL.createObjectURL(blob);
+                const img = $('previewFrame');
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    if (seq !== state.screenshotSeq) return;
+                    // 新帧已解码完成，若之前保留了 sprite 旧帧，此刻再切回 frame-mode（无闪烁）
+                    if (deferModeSwitch) {
+                        $('previewContainer').classList.remove('sprite-mode');
+                    }
+                    $('status').textContent = '就绪';
+                };
+                img.src = url;
+            } catch (e) {
+                if (seq !== state.screenshotSeq) return;
+                if (e && e.name === 'AbortError') return;
+                $('status').textContent = '截图失败: ' + (e.message || e);
+                // 失败时保持当前画面（sprite 旧帧或 frame 旧帧），不切换模式
+            }
+        }
+
+        function jumpTo(t) {
+            if (state.playing) return;
+            seekTo(t, { keepOldFrame: true, debounce: 0 });
+        }
+
+        /* ---------- sprite 加载与切格 ---------- */
+        function loadImage(url) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('图片加载失败'));
+                img.src = url;
+            });
+        }
+
+        function ensureSprite(t0) {
+            if (t0 < 0) return Promise.resolve(null);
+            if (state.spriteCache.has(t0)) return Promise.resolve(state.spriteCache.get(t0));
+            if (state.spriteInflight.has(t0)) return state.spriteInflight.get(t0);
+
+            const relPath = state.current ? state.current.relPath : null;
+            if (!relPath) return Promise.resolve(null);
+
+            const promise = (async () => {
+                const url = '/api/sprite?path=' + encodeURIComponent(relPath) + '&t=' + t0;
+                const signal = state.spriteAbort ? state.spriteAbort.signal : undefined;
+                const res = await fetch(url, { signal });
+                if (!res.ok) throw new Error('sprite 请求失败 ' + res.status);
+                const blob = await res.blob();
+                const objUrl = URL.createObjectURL(blob);
+                const img = await loadImage(objUrl);
+
+                if (!state.current || state.current.relPath !== relPath) {
+                    URL.revokeObjectURL(objUrl);
+                    return null;
+                }
+
+                const sprite = { url: objUrl, img, t0, cols: SPRITE_COLS, rows: SPRITE_ROWS };
+                state.spriteCache.set(t0, sprite);
+                state.spriteCacheOrder.push(t0);
+                while (state.spriteCacheOrder.length > SPRITE_CACHE_MAX) {
+                    const oldT0 = state.spriteCacheOrder.shift();
+                    const old = state.spriteCache.get(oldT0);
+                    if (old) {
+                        URL.revokeObjectURL(old.url);
+                        state.spriteCache.delete(oldT0);
+                    }
+                }
+                return sprite;
+            })();
+
+            state.spriteInflight.set(t0, promise);
+            promise.finally(() => state.spriteInflight.delete(t0)).catch(() => { });
+            return promise;
+        }
+
+        function showSpriteFrame(sprite, idx) {
+            if (!sprite || !sprite.img) return;
+            const clip = $('previewClip');
+            const spriteEl = $('previewSprite');
+            const container = $('previewContainer');
+
+            if (spriteEl.getAttribute('src') !== sprite.url) {
+                spriteEl.src = sprite.url;
+            }
+
+            const img = sprite.img;
+            const frameW = Math.floor(img.naturalWidth / sprite.cols);
+            const frameH = Math.floor(img.naturalHeight / sprite.rows);
+            if (frameW <= 0 || frameH <= 0) return;
+
+            const cw = container.clientWidth;
+            const ch = container.clientHeight;
+            if (cw <= 0 || ch <= 0) return;
+
+            const ratio = frameW / frameH;
+            let dispW = cw;
+            let dispH = dispW / ratio;
+            if (dispH > ch) {
+                dispH = ch;
+                dispW = dispH * ratio;
+            }
+
+            clip.style.width = dispW + 'px';
+            clip.style.height = dispH + 'px';
+            spriteEl.style.width = (dispW * sprite.cols) + 'px';
+            spriteEl.style.height = (dispH * sprite.rows) + 'px';
+
+            const col = idx % sprite.cols;
+            const row = Math.floor(idx / sprite.cols);
+            spriteEl.style.left = (-col * dispW) + 'px';
+            spriteEl.style.top = (-row * dispH) + 'px';
+        }
+
+        /* ---------- 播放 ---------- */
+        async function play() {
+            if (!state.current || state.playing) return;
+            switchTab('preview');
+
+            const t0 = Math.floor(state.currentT / SPRITE_SIZE) * SPRITE_SIZE;
+            if (!state.spriteCache.has(t0)) {
+                $('status').textContent = '准备播放...';
+                try {
+                    await ensureSprite(t0);
+                } catch (e) {
+                    if (state.current) $('status').textContent = '准备播放失败: ' + (e.message || e);
+                    return;
+                }
+                if (!state.current) return;
+                const newT0 = Math.floor(state.currentT / SPRITE_SIZE) * SPRITE_SIZE;
+                if (newT0 !== t0) return play();
+            }
+
+            // 作废进行中的 screenshot 请求及其 onload 切模式动作，避免打断播放
+            if (state.screenshotAbort) state.screenshotAbort.abort();
+            if (state.screenshotTimer) { clearTimeout(state.screenshotTimer); state.screenshotTimer = null; }
+            state.screenshotSeq++;
+
+            // 切到 sprite 模式
+            $('previewContainer').classList.add('sprite-mode');
+
+            state.playing = true;
+            state.playSeq++;
+            const seq = state.playSeq;
+            enableControls(false);
+            $('playBtn').disabled = true;
+            $('stopBtn').disabled = false;
+            $('status').textContent = '播放中...';
+
+            try {
+                while (state.playing && seq === state.playSeq) {
+                    if (state.currentT >= state.duration) break;
+                    const curT0 = Math.floor(state.currentT / SPRITE_SIZE) * SPRITE_SIZE;
+                    let sprite = state.spriteCache.get(curT0);
+                    if (!sprite) {
+                        try {
+                            sprite = await ensureSprite(curT0);
+                        } catch (e) {
+                            await waitShort(500);
+                            continue;
+                        }
+                        if (!state.playing || seq !== state.playSeq) break;
+                        if (!sprite) { await waitShort(200); continue; }
+                    }
+                    const idx = Math.min(Math.round(state.currentT) - curT0, SPRITE_SIZE - 1);
+                    showSpriteFrame(sprite, idx);
+                    $('timeInfo').textContent = formatTime(state.currentT) + ' / ' + formatTime(state.duration);
+                    $('progress').value = state.currentT;
+                    state.currentT += 1;
+
+                    // 预取后续时间片
+                    for (let k = 1; k <= PREFETCH_AHEAD; k++) {
+                        ensureSprite(curT0 + SPRITE_SIZE * k).catch(() => { });
+                    }
+
+                    // 分片等待 1s，便于快速响应停止
+                    const end = Date.now() + 1000;
+                    while (state.playing && seq === state.playSeq && Date.now() < end) {
+                        await waitShort(Math.min(100, end - Date.now()));
+                    }
+                }
+            } finally {
+                if (seq === state.playSeq) stopPlay();
+            }
+        }
+
+        function stopPlay() {
+            if (!state.playing) return;
+            state.playing = false;
+            state.playSeq++;
+            enableControls(true);
+            $('playBtn').disabled = false;
+            $('stopBtn').disabled = true;
+            $('status').textContent = '已停止';
+            // 保留 sprite 旧帧，等 screenshot 返回并在 onload 后再切回 frame-mode（无闪烁）
+            seekTo(state.currentT, { keepOldFrame: true, debounce: 0 });
+        }
+
+        /* ---------- 其他 ---------- */
+        function updateClipInfo() {
+            const s = state.clipStart != null ? formatTime(state.clipStart) : '—';
+            const e = state.clipEnd != null ? formatTime(state.clipEnd) : '—';
+            const d = (state.clipStart != null && state.clipEnd != null && state.clipEnd > state.clipStart)
+                ? formatTime(state.clipEnd - state.clipStart) : '—';
+            $('clipTimes').textContent = '起始点：' + s + ' | 结束点：' + e + ' | 时长：' + d;
+            $('cutBtn').disabled = !(state.clipStart != null && state.clipEnd != null && state.clipEnd > state.clipStart) || state.busy || state.playing;
+        }
+
+        async function copyLink(relPath, btn) {
+            const url = window.location.origin + '/download/' + strictEncodePath(relPath);
+            try {
+                await navigator.clipboard.writeText(url);
+                btn.textContent = '✓';
+                setTimeout(() => btn.textContent = '⧉', 1000);
+            } catch (e) {
+                const ta = document.createElement('textarea');
+                ta.value = url;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                btn.textContent = '✓';
+                setTimeout(() => btn.textContent = '⧉', 1000);
+            }
+        }
+
+        async function deleteFile(relPath) {
+            if (state.busy || state.playing) return;
+            if (!confirm('确定删除文件 ' + relPath + ' ？')) return;
+            state.busy = true;
+            $('loading').classList.add('show');
+            try {
+                const res = await fetch('/api/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: relPath })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                if (state.current && state.current.relPath === relPath) {
+                    state.current = null;
+                    state.playSeq++;
+                    state.storyboardSeq++;
+                    state.screenshotSeq++;
+                    if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
+                    if (state.screenshotTimer) { clearTimeout(state.screenshotTimer); state.screenshotTimer = null; }
+                    if (state.screenshotAbort) { state.screenshotAbort.abort(); state.screenshotAbort = null; }
+                    clearSprites();
+                    resetPreviewAll();
+                    $('storyboardImg').removeAttribute('src');
+                    showStoryboardPlaceholder('未选择文件');
+                    $('title').textContent = '未选择文件';
+                    $('timeInfo').textContent = '--:--:-- / --:--:--';
+                    $('progress').value = 0;
+                    $('clipTimes').textContent = '起始点：— | 结束点：— | 时长：—';
+                    enableControls(false);
+                }
+                await loadVideos();
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            } finally {
+                state.busy = false;
+                $('loading').classList.remove('show');
+            }
+        }
+
+        /* ---------- 事件绑定 ---------- */
+        document.addEventListener('DOMContentLoaded', () => {
+            // 初始化 AbortController
+            state.spriteAbort = new AbortController();
+            state.screenshotAbort = new AbortController();
+
+            loadVideos();
+
+            document.querySelectorAll('#tabs .tab').forEach(t => {
+                t.addEventListener('click', () => switchTab(t.dataset.tab));
+            });
+
+            $('playBtn').addEventListener('click', play);
+            $('stopBtn').addEventListener('click', stopPlay);
+            $('back5').addEventListener('click', () => jumpTo(state.currentT - 5));
+            $('back1').addEventListener('click', () => jumpTo(state.currentT - 1));
+            $('fwd1').addEventListener('click', () => jumpTo(state.currentT + 1));
+            $('fwd5').addEventListener('click', () => jumpTo(state.currentT + 5));
+
+            $('progress').addEventListener('input', (e) => {
+                if (state.playing) return;
+                state.currentT = parseFloat(e.target.value);
+                $('timeInfo').textContent = formatTime(state.currentT) + ' / ' + formatTime(state.duration);
+            });
+            $('progress').addEventListener('change', (e) => {
+                if (state.playing) return;
+                seekTo(parseFloat(e.target.value), { keepOldFrame: true, debounce: SEEK_DEBOUNCE_MS });
+            });
+
+            $('jumpBtn').addEventListener('click', () => {
+                const val = $('timeInput').value.trim();
+                if (!val) return;
+                let t = 0;
+                if (val.includes(':')) {
+                    const parts = val.split(':').map(Number);
+                    if (parts.length === 3) t = parts[0] * 3600 + parts[1] * 60 + parts[2];
+                    else if (parts.length === 2) t = parts[0] * 60 + parts[1];
+                } else {
+                    t = parseFloat(val);
+                }
+                if (!isNaN(t)) jumpTo(t);
+            });
+
+            $('setStart').addEventListener('click', () => {
+                state.clipStart = state.currentT;
+                updateClipInfo();
+            });
+            $('setEnd').addEventListener('click', () => {
+                state.clipEnd = state.currentT;
+                updateClipInfo();
+            });
+            $('cutBtn').addEventListener('click', async () => {
+                if (state.clipStart == null || state.clipEnd == null || state.clipEnd <= state.clipStart) return;
+                if (state.busy || state.playing) return;
+                state.busy = true;
+                $('loading').classList.add('show');
+                try {
+                    const res = await fetch('/api/clip', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: state.current.relPath, start: state.clipStart, end: state.clipEnd })
+                    });
+                    if (!res.ok) throw new Error(await res.text());
+                    const data = await res.json();
+                    $('status').textContent = '切割成功: ' + data.output;
+                } catch (e) {
+                    $('status').textContent = '切割失败: ' + e.message;
+                } finally {
+                    state.busy = false;
+                    $('loading').classList.remove('show');
+                }
+            });
+
+            // 窗口尺寸变化：sprite 模式下需要重绘；frame 模式 img 自动适配
+            window.addEventListener('resize', () => {
+                if (!state.current) return;
+                if (!$('previewContainer').classList.contains('sprite-mode')) return;
+                const t0 = Math.floor(state.currentT / SPRITE_SIZE) * SPRITE_SIZE;
+                const sprite = state.spriteCache.get(t0);
+                if (!sprite) return;
+                const idx = Math.min(Math.round(state.currentT) - t0, SPRITE_SIZE - 1);
+                showSpriteFrame(sprite, idx);
+            });
+        });
+    </script>
+</body>
+
+</html>
