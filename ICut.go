@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/jpeg"
 	"io"
 	"log"
 	"net/http"
@@ -198,37 +201,99 @@ func loadStoryboardCache() {
 
 // ---------- 故事板生成 ----------
 
+const (
+	tileCols      = 5
+	tileRows      = 5
+	tileCount     = tileCols * tileRows // 25
+	thumbWidth    = 320
+	singleTimeout = 60 * time.Second
+	jpegQuality   = 85
+)
+
+// generateStoryboard 对 25 个时间点分别做输入 seek 快速截图, 再用标准库拼成 5x5 故事版
+// 原始方案需要解码整个视频并丢弃大部分结果, 现在只需要几十次快速定位并截图, 大幅提升了故事版生成速度
 func generateStoryboard(v *Video) ([]byte, error) {
 	dur, err := getDuration(v.AbsPath)
 	if err != nil {
 		return nil, err
 	}
-	interval := dur / 26.0
+
+	interval := dur / float64(tileCount+1)
 	if interval < 1.0 {
 		interval = 1.0
 	}
-	startTime := interval
 
-	vf := fmt.Sprintf("fps=1/%.6f,scale=320:-2,tile=5x5", interval)
-	baseArgs := []string{
+	// 5x5 需要 25 个不同时间点；短视频无法覆盖时明确报错，避免逐帧失败后才发现
+	if interval*float64(tileCount) >= dur {
+		return nil, fmt.Errorf(
+			"video too short for %dx%d storyboard: duration %.3fs, need > %.3fs",
+			tileCols, tileRows, dur, interval*float64(tileCount),
+		)
+	}
+
+	var dst *image.RGBA
+	var baseW, baseH int
+
+	// 串行截取 25 帧，逐张绘制到大图，避免保留 25 张中间图
+	for i := 1; i <= tileCount; i++ {
+		ts := interval * float64(i)
+		img, err := captureFrame(v.AbsPath, ts)
+		if err != nil {
+			return nil, fmt.Errorf("capture frame %d/%d at %.3fs: %w", i, tileCount, ts, err)
+		}
+
+		b := img.Bounds()
+		if i == 1 {
+			baseW, baseH = b.Dx(), b.Dy()
+			dst = image.NewRGBA(image.Rect(0, 0, baseW*tileCols, baseH*tileRows))
+		} else if b.Dx() != baseW || b.Dy() != baseH {
+			return nil, fmt.Errorf(
+				"frame %d size %dx%d differs from base %dx%d",
+				i, b.Dx(), b.Dy(), baseW, baseH,
+			)
+		}
+
+		col := (i - 1) % tileCols
+		row := (i - 1) / tileCols
+		rect := image.Rect(col*baseW, row*baseH, (col+1)*baseW, (row+1)*baseH)
+		draw.Draw(dst, rect, img, img.Bounds().Min, draw.Src)
+	}
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: jpegQuality}); err != nil {
+		return nil, fmt.Errorf("jpeg encode: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// captureFrame 用输入 seek + -noaccurate_seek 快速截取 ts 附近的关键帧
+func captureFrame(path string, ts float64) (image.Image, error) {
+	args := []string{
 		"-hide_banner",
-		"-ss", fmt.Sprintf("%.3f", startTime),
-		"-i", v.AbsPath,
-		"-vf", vf,
+		"-loglevel", "error",
+		"-ss", fmt.Sprintf("%.3f", ts),
+		"-noaccurate_seek", // 输入选项：直接落在目标时间之前最近的关键帧
+		"-i", path,
 		"-frames:v", "1",
+		"-vf", fmt.Sprintf("scale=%d:-2", thumbWidth),
+		"-q:v", "3",
 		"-f", "mjpeg",
 		"-",
 	}
 
-	skipArgs := append([]string{"-skip_frame", "nokey"}, baseArgs...)
-	out, stderr, err := runFFmpeg(15*time.Minute, skipArgs...)
-	if err != nil || len(out) == 0 {
-		out, stderr, err = runFFmpeg(30*time.Minute, baseArgs...)
-		if err != nil {
-			return nil, fmt.Errorf("%v: %s", err, truncateStr(stderr, 2048))
-		}
+	out, stderr, err := runFFmpeg(singleTimeout, args...)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", err, truncateStr(stderr, 1024))
 	}
-	return out, nil
+	if len(out) == 0 {
+		return nil, fmt.Errorf("empty output: %s", truncateStr(stderr, 1024))
+	}
+
+	img, err := jpeg.Decode(bytes.NewReader(out))
+	if err != nil {
+		return nil, fmt.Errorf("jpeg decode: %w", err)
+	}
+	return img, nil
 }
 
 func storyboardWorker() {
