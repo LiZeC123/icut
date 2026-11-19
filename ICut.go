@@ -601,7 +601,7 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 func main() {
 	flag.StringVar(&rootDir, "root", ".", "视频根目录")
 	flag.IntVar(&port, "port", 8080, "端口")
-	flag.Int64Var(&minSize, "min-size", 300, "最小文件大小 (MiB)")
+	flag.Int64Var(&minSize, "min-size", 50, "最小文件大小 (MiB)")
 	flag.Parse()
 
 	absRoot, err := filepath.Abs(rootDir)
