@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"image"
@@ -164,11 +165,52 @@ func scanVideos() {
 
 // ---------- 故事板缓存加载 ----------
 
+// EnsureStoryDir 检查 rootDir 下是否存在 story 目录，不存在则创建，
+// 最后返回指向 story 目录的完整路径。
+func ensureSubDir(rootDir, subName string) (string, error) {
+	// 如果 rootDir 为空，退化为当前目录
+	if rootDir == "" {
+		rootDir = "."
+	}
+
+	// 拼接 story 目录路径
+	storyDir := filepath.Join(rootDir, subName)
+
+	// 检查路径是否已存在
+	info, err := os.Stat(storyDir)
+	switch {
+	case err == nil:
+		// 路径存在，但必须是一个目录
+		if !info.IsDir() {
+			return "", fmt.Errorf("路径已存在但不是目录: %s", storyDir)
+		}
+		// 已存在目录，直接返回
+		return storyDir, nil
+
+	case errors.Is(err, os.ErrNotExist):
+		// 目录不存在，创建（MkdirAll 会自动创建缺失的父级目录）
+		if err := os.MkdirAll(storyDir, 0o755); err != nil {
+			return "", fmt.Errorf("创建 sub 目录失败: %w", err)
+		}
+		return storyDir, nil
+
+	default:
+		// 其他错误（权限不足、路径非法等）
+		return "", fmt.Errorf("检查 sub 目录失败: %w", err)
+	}
+}
+
 // 修改点：加 mtime 判定（1 秒容差），缓存过期则重新入队
 func loadStoryboardCache() {
+	cacheDir, err := ensureSubDir(rootDir, "storyboard")
+	if err != nil {
+		logMsg(fmt.Sprintf("创建故事版缓存目录失败: %v", err))
+		return
+	}
+
 	for i := range videos {
 		v := &videos[i]
-		cachePath := filepath.Join(rootDir, "storyboard_"+v.BaseName+".jpg")
+		cachePath := filepath.Join(cacheDir, "storyboard_"+v.BaseName+".jpg")
 
 		cacheInfo, err := os.Stat(cachePath)
 		if err != nil {
@@ -297,6 +339,12 @@ func captureFrame(path string, ts float64) (image.Image, error) {
 }
 
 func storyboardWorker() {
+	cacheDir, err := ensureSubDir(rootDir, "storyboard")
+	if err != nil {
+		logMsg(fmt.Sprintf("创建故事版缓存目录失败: %v", err))
+		return
+	}
+
 	for relPath := range storyboardQueue {
 		storyboardsMu.RLock()
 		_, exists := storyboards[relPath]
@@ -320,7 +368,7 @@ func storyboardWorker() {
 
 		fmt.Printf("%s 开始生成故事板: %s\n", time.Now().Format("15:04:05"), relPath)
 		data, err := generateStoryboard(v)
-		cachePath := filepath.Join(rootDir, "storyboard_"+v.BaseName+".jpg")
+		cachePath := filepath.Join(cacheDir, "storyboard_"+v.BaseName+".jpg")
 		if err != nil {
 			fmt.Printf("%s 故事板生成失败: %s: %v\n", time.Now().Format("15:04:05"), relPath, err)
 			// 修改点：生成失败时删除旧缓存，强制下次启动重建
@@ -613,7 +661,7 @@ func main() {
 	minSize = minSize * 1024 * 1024
 
 	storyboards = make(map[string]*Storyboard)
-	storyboardQueue = make(chan string, 10000)
+	storyboardQueue = make(chan string, 100)
 
 	scanVideos()
 	logMsg(fmt.Sprintf("启动完成，共 %d 个视频，根目录: %s", len(videos), rootDir))
